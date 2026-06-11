@@ -15,13 +15,12 @@ import {
 import { getAuth, GoogleAuthProvider } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
 
 const firebaseConfig = {
-  // TODO: colar aqui a config do console (ver link acima).
-  apiKey: 'COLE_AQUI',
+  apiKey: 'AIzaSyB7_I_mWOoQE6O-6DRt9D0NhREaRQ-3eaA',
   authDomain: 'bolao-copa2026-a46d7.firebaseapp.com',
   projectId: 'bolao-copa2026-a46d7',
   storageBucket: 'bolao-copa2026-a46d7.firebasestorage.app',
-  messagingSenderId: 'COLE_AQUI',
-  appId: 'COLE_AQUI',
+  messagingSenderId: '156294859598',
+  appId: '1:156294859598:web:fd660de0223abca9952c1f',
 };
 
 export const app = initializeApp(firebaseConfig);
