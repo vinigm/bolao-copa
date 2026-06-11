@@ -13,19 +13,28 @@ import { MATCHES } from './matches.js';
 
 const TZ = 'America/Sao_Paulo';
 
-// A numeração oficial FIFA não é estritamente cronológica — pra exibir, ordena por data.
-const ORDERED = [...MATCHES].sort((a, b) => (new Date(a.utc) - new Date(b.utc)) || (a.id - b.id));
-
 // Modo demo (?demo=1): sem login nem Firestore, com dados fake — só pra
 // desenvolver/testar o visual.
 const DEMO = new URLSearchParams(location.search).has('demo');
+
+// A numeração oficial FIFA não é estritamente cronológica — pra exibir, ordena por data.
+const ORDERED = [...MATCHES].sort((a, b) => (new Date(a.utc) - new Date(b.utc)) || (a.id - b.id));
+
+// Fases na ordem de exibição: grupos A–L, depois mata-mata em ordem cronológica.
+const STAGES = (() => {
+  const all = [...new Set(ORDERED.map((m) => m.stage))];
+  return [
+    ...all.filter((s) => s.startsWith('Grupo')).sort(),
+    ...all.filter((s) => !s.startsWith('Grupo')),
+  ];
+})();
 
 const state = {
   me: null,                 // email logado
   picks: {},                // email → { matchId: {h,a} }
   results: {},              // matchId → {h,a}
   stageFilter: '',
-  scrolled: false,
+  selectedDay: null,        // dia selecionado no calendário (YYYY-MM-DD)
 };
 
 // ---------- pontuação ----------
@@ -53,27 +62,39 @@ function totals(email) {
 function kickoff(m) { return new Date(m.utc).getTime(); }
 function isLocked(m) { return Date.now() >= kickoff(m); }
 
+function fmtDay(date, opts) {
+  return new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, ...opts }).format(date);
+}
 function dayKey(m) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
     .format(new Date(m.utc));
 }
-function dayLabel(m) {
-  const s = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' })
-    .format(new Date(m.utc));
-  return s.charAt(0).toUpperCase() + s.slice(1);
+function shortDate(m) {
+  return fmtDay(new Date(m.utc), { weekday: 'short', day: 'numeric', month: 'short' });
 }
 function hourLabel(m) {
-  return new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, hour: '2-digit', minute: '2-digit' })
-    .format(new Date(m.utc));
+  return fmtDay(new Date(m.utc), { hour: '2-digit', minute: '2-digit' });
 }
 function todayKey() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
     .format(new Date());
 }
 
-// ---------- gravação no Firestore ----------
+// ---------- gravação no Firestore (autosave com debounce + flush manual) ----------
 
 const saveTimers = {};
+const pendingSaves = new Map();
+
+function schedule(key, fn) {
+  clearTimeout(saveTimers[key]);
+  pendingSaves.set(key, fn);
+  saveTimers[key] = setTimeout(() => { pendingSaves.delete(key); fn(); }, 600);
+}
+
+function flushSaves() {
+  for (const [key, fn] of pendingSaves) { clearTimeout(saveTimers[key]); fn(); }
+  pendingSaves.clear();
+}
 
 function savePick(matchId, h, a) {
   const email = state.me;
@@ -83,13 +104,11 @@ function savePick(matchId, h, a) {
     renderPlacarGeral(); renderRanking();
     return;
   }
-  clearTimeout(saveTimers[matchId]);
-  saveTimers[matchId] = setTimeout(() => {
-    const ref = doc(db, 'palpites', email);
+  schedule('p' + matchId, () => {
     const value = (h === null || a === null) ? deleteField() : { h, a };
-    setDoc(ref, { name: PLAYERS[email].name, picks: { [matchId]: value } }, { merge: true })
+    setDoc(doc(db, 'palpites', email), { name: PLAYERS[email].name, picks: { [matchId]: value } }, { merge: true })
       .catch((e) => console.error('[Bolão] erro salvando palpite', e));
-  }, 500);
+  });
 }
 
 function saveResult(matchId, h, a) {
@@ -99,16 +118,14 @@ function saveResult(matchId, h, a) {
     renderPlacarGeral(); renderRanking();
     return;
   }
-  clearTimeout(saveTimers['r' + matchId]);
-  saveTimers['r' + matchId] = setTimeout(() => {
-    const ref = doc(db, 'bolao', 'resultados');
+  schedule('r' + matchId, () => {
     const value = (h === null || a === null) ? deleteField() : { h, a };
-    setDoc(ref, { results: { [matchId]: value } }, { merge: true })
+    setDoc(doc(db, 'bolao', 'resultados'), { results: { [matchId]: value } }, { merge: true })
       .catch((e) => console.error('[Bolão] erro salvando resultado', e));
-  }, 500);
+  });
 }
 
-// ---------- render ----------
+// ---------- render: tabela de jogos ----------
 
 function scoreInputs(matchId, kind, pick, disabled) {
   const v = (x) => (x === 0 || x ? x : '');
@@ -127,68 +144,127 @@ function ptsBadge(p) {
   return `<span class="pts ${cls}">${txt}</span>`;
 }
 
-function matchCard(m) {
+// Colunas dos jogadores: o usuário logado primeiro (no celular evita rolar pro lado).
+function playerColumns() {
+  return [...PLAYER_EMAILS].sort((a, b) => (a === state.me ? -1 : 0) - (b === state.me ? -1 : 0));
+}
+
+function matchRow(m, cols) {
   const locked = isLocked(m);
   const res = state.results[m.id] || null;
 
-  const rows = PLAYER_EMAILS.map((email) => {
+  const realCell = locked
+    ? `<td class="cell-real">${scoreInputs(m.id, 'result', res, false)}</td>`
+    : `<td class="cell-real"><span class="dash" title="abre quando o jogo começar">–</span></td>`;
+
+  const pickCells = cols.map((email) => {
     const pl = PLAYERS[email];
     const mine = email === state.me;
     const pick = state.picks[email]?.[m.id] || null;
     let body;
-    if (!locked && !mine) {
-      body = `<span class="secret">🙈 segredo</span>`;
-    } else {
-      body = scoreInputs(m.id, 'pick', pick, !mine || locked);
-    }
-    const badge = locked ? ptsBadge(points(pick, res)) : '';
-    return `
-      <div class="row row-${pl.color}">
-        <span class="row-label">${pl.emoji} ${pl.name}</span>
-        <span class="row-body">${body}</span>
-        ${badge}
-      </div>`;
+    if (!locked && !mine) body = `<span class="secret" title="segredo até o jogo começar">🙈</span>`;
+    else body = scoreInputs(m.id, 'pick', pick, !mine || locked);
+    const badge = locked && res ? `<div class="cell-pts">${ptsBadge(points(pick, res))}</div>` : '';
+    return `<td class="cell-pick cell-${pl.color}">${body}${badge}</td>`;
   }).join('');
 
-  const resultRow = locked ? `
-    <div class="row row-result">
-      <span class="row-label">🏟️ Placar</span>
-      <span class="row-body">${scoreInputs(m.id, 'result', res, false)}</span>
-    </div>` : `
-    <div class="row row-open">
-      <span class="open-note">🔓 palpites abertos até ${hourLabel(m)}</span>
-    </div>`;
-
   return `
-    <article class="match" id="match-${m.id}">
-      <div class="match-meta">
-        <span class="stage-badge">${m.stage}</span>
-        <span class="match-venue">📍 ${m.venue} · ${hourLabel(m)}</span>
-      </div>
-      <div class="match-teams">
-        <span class="team team-h">${m.homeFlag} ${m.home}</span>
-        <span class="team-vs">×</span>
-        <span class="team team-a">${m.away} ${m.awayFlag}</span>
-      </div>
-      ${rows}
-      ${resultRow}
-    </article>`;
+    <tr class="match-row" id="match-${m.id}">
+      <td class="cell-jogo">
+        <div class="mt">${m.homeFlag} ${m.home} <span class="mvs">×</span> ${m.awayFlag} ${m.away}</div>
+        <div class="md">${shortDate(m)} · ${hourLabel(m)} · ${m.venue}</div>
+      </td>
+      ${realCell}
+      ${pickCells}
+    </tr>`;
 }
 
 function renderJogos() {
   const el = document.getElementById('view-jogos');
-  const matches = ORDERED.filter((m) => !state.stageFilter || m.stage === state.stageFilter);
-  let html = '', lastDay = '';
-  for (const m of matches) {
-    const dk = dayKey(m);
-    if (dk !== lastDay) {
-      lastDay = dk;
-      html += `<h2 class="day-header" data-day="${dk}">${dayLabel(m)}</h2>`;
-    }
-    html += matchCard(m);
+  const cols = playerColumns();
+  const ncols = 2 + cols.length;
+
+  const head = `
+    <tr>
+      <th class="col-jogo">Jogo</th>
+      <th class="col-real">Real</th>
+      ${cols.map((e) => `<th class="col-${PLAYERS[e].color}">${PLAYERS[e].emoji} ${PLAYERS[e].name}</th>`).join('')}
+    </tr>`;
+
+  let body = '';
+  for (const stage of STAGES) {
+    if (state.stageFilter && stage !== state.stageFilter) continue;
+    const ms = ORDERED.filter((m) => m.stage === stage);
+    body += `<tr class="stage-row"><td colspan="${ncols}"><span class="stage-label">📌 ${stage.toUpperCase()}</span></td></tr>`;
+    body += ms.map((m) => matchRow(m, cols)).join('');
   }
-  el.innerHTML = html || '<p class="empty">Nenhum jogo nessa fase.</p>';
+
+  el.innerHTML = `
+    <div class="table-wrap">
+      <table class="palpites-table">
+        <thead>${head}</thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>`;
 }
+
+// ---------- render: calendário ----------
+
+const matchesByDay = (() => {
+  const map = {};
+  for (const m of ORDERED) (map[dayKey(m)] ||= []).push(m);
+  return map;
+})();
+
+function renderCalendario() {
+  const el = document.getElementById('view-calendario');
+  const tk = todayKey();
+  const months = [{ y: 2026, m: 5, label: 'Junho 2026' }, { y: 2026, m: 6, label: 'Julho 2026' }];
+  const weekdays = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+
+  const grids = months.map(({ y, m, label }) => {
+    const first = new Date(y, m, 1);
+    const ndays = new Date(y, m + 1, 0).getDate();
+    let cells = '';
+    for (let i = 0; i < first.getDay(); i++) cells += '<div class="cal-cell cal-empty"></div>';
+    for (let d = 1; d <= ndays; d++) {
+      const key = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const games = matchesByDay[key] || [];
+      const classes = ['cal-cell'];
+      if (games.length) classes.push('cal-has');
+      if (key === tk) classes.push('cal-today');
+      if (key === state.selectedDay) classes.push('cal-selected');
+      cells += `
+        <div class="${classes.join(' ')}" ${games.length ? `data-day="${key}"` : ''}>
+          <span class="cal-num">${d}</span>
+          ${games.length ? `<span class="cal-count">${games.length}⚽</span>` : ''}
+        </div>`;
+    }
+    return `
+      <div class="cal-month">
+        <h3>${label}</h3>
+        <div class="cal-grid">
+          ${weekdays.map((w) => `<div class="cal-wd">${w}</div>`).join('')}
+          ${cells}
+        </div>
+      </div>`;
+  }).join('');
+
+  const day = state.selectedDay;
+  const games = day ? (matchesByDay[day] || []) : [];
+  const detail = !day ? '<p class="cal-hint">Toque num dia pra ver os jogos. 👆</p>' : `
+    <h3 class="cal-detail-title">${fmtDay(new Date(games[0].utc), { weekday: 'long', day: 'numeric', month: 'long' })}</h3>
+    ${games.map((m) => `
+      <div class="cal-game">
+        <span class="cal-game-hour">${hourLabel(m)}</span>
+        <span class="cal-game-teams">${m.homeFlag} ${m.home} × ${m.away} ${m.awayFlag}</span>
+        <span class="cal-game-meta">${m.stage} · ${m.venue}</span>
+      </div>`).join('')}`;
+
+  el.innerHTML = `<div class="cal-months">${grids}</div><div class="cal-detail">${detail}</div>`;
+}
+
+// ---------- render: placar geral e ranking ----------
 
 function renderPlacarGeral() {
   const el = document.getElementById('placar-geral');
@@ -245,6 +321,7 @@ function renderRanking() {
 function renderAll() {
   renderPlacarGeral();
   renderJogos();
+  renderCalendario();
   renderRanking();
 }
 
@@ -271,26 +348,28 @@ function setupInteractions() {
     else saveResult(matchId, h, a);
   });
 
+  // calendário: clique num dia mostra os jogos dele
+  document.getElementById('view-calendario').addEventListener('click', (e) => {
+    const cell = e.target.closest('[data-day]');
+    if (!cell) return;
+    state.selectedDay = cell.dataset.day;
+    renderCalendario();
+  });
+
   document.querySelectorAll('.tab').forEach((btn) => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b === btn));
       const tab = btn.dataset.tab;
-      for (const v of ['jogos', 'ranking', 'regras']) {
+      for (const v of ['jogos', 'calendario', 'ranking', 'regras']) {
         document.getElementById(`view-${v}`).hidden = v !== tab;
       }
       document.getElementById('filters').style.display = tab === 'jogos' ? '' : 'none';
+      document.getElementById('save-bar').style.display = tab === 'jogos' ? '' : 'none';
     });
   });
 
-  document.getElementById('btn-hoje').addEventListener('click', () => scrollToToday(true));
-
   const sel = document.getElementById('stage-filter');
-  const all = [...new Set(ORDERED.map((m) => m.stage))];
-  const stages = [
-    ...all.filter((s) => s.startsWith('Grupo')).sort(),
-    ...all.filter((s) => !s.startsWith('Grupo')),
-  ];
-  for (const s of stages) {
+  for (const s of STAGES) {
     const opt = document.createElement('option');
     opt.value = s; opt.textContent = s;
     sel.appendChild(opt);
@@ -299,13 +378,14 @@ function setupInteractions() {
     state.stageFilter = sel.value;
     renderJogos();
   });
-}
 
-function scrollToToday(smooth = false) {
-  const tk = todayKey();
-  const headers = [...document.querySelectorAll('.day-header')];
-  const target = headers.find((h) => h.dataset.day >= tk) || headers[headers.length - 1];
-  target?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+  // o autosave já grava sozinho; o botão força a gravação imediata + feedback
+  document.getElementById('btn-save').addEventListener('click', () => {
+    flushSaves();
+    const toast = document.getElementById('save-toast');
+    toast.hidden = false;
+    setTimeout(() => { toast.hidden = true; }, 2500);
+  });
 }
 
 // ---------- snapshots ----------
@@ -317,37 +397,29 @@ function subscribe() {
       // eco local do próprio palpite não precisa re-render (evita perder o foco do input)
       if (email === state.me && snap.metadata.hasPendingWrites) { renderPlacarGeral(); return; }
       renderAll();
-      maybeAutoScroll();
     });
   }
   onSnapshot(doc(db, 'bolao', 'resultados'), (snap) => {
     state.results = snap.data()?.results || {};
     if (snap.metadata.hasPendingWrites) { renderPlacarGeral(); renderRanking(); return; }
     renderAll();
-    maybeAutoScroll();
   });
-}
-
-function maybeAutoScroll() {
-  if (state.scrolled) return;
-  state.scrolled = true;
-  setTimeout(() => scrollToToday(false), 100);
 }
 
 // ---------- boot ----------
 
 function boot({ player, email }) {
-    state.me = email;
-    document.getElementById('user-chip').textContent = `${player.emoji} ${player.name}`;
-    renderAll();
-    setupInteractions();
-    if (!DEMO) subscribe();
-    maybeAutoScroll();
-    // destrava cards conforme os jogos começam (checa a cada minuto)
-    setInterval(() => {
-      if (document.activeElement?.classList?.contains('score')) return;
-      renderJogos(); renderPlacarGeral();
-    }, 60_000);
+  state.me = email;
+  state.selectedDay = matchesByDay[todayKey()] ? todayKey() : null;
+  document.getElementById('user-chip').textContent = `${player.emoji} ${player.name}`;
+  renderAll();
+  setupInteractions();
+  if (!DEMO) subscribe();
+  // destrava linhas conforme os jogos começam (checa a cada minuto)
+  setInterval(() => {
+    if (document.activeElement?.classList?.contains('score')) return;
+    renderJogos(); renderPlacarGeral();
+  }, 60_000);
 }
 
 if (DEMO) {
@@ -355,10 +427,11 @@ if (DEMO) {
   document.getElementById('app').hidden = false;
   for (const e of PLAYER_EMAILS) state.picks[e] = {};
   const [e1, e2] = PLAYER_EMAILS;
-  const m0 = MATCHES[0];
-  state.picks[e1][m0.id] = { h: 2, a: 0 };
-  state.picks[e2][m0.id] = { h: 1, a: 0 };
-  state.results[m0.id] = { h: 2, a: 0 };
+  state.picks[e1][1] = { h: 2, a: 0 };
+  state.picks[e2][1] = { h: 1, a: 0 };
+  state.picks[e1][3] = { h: 1, a: 1 };
+  state.picks[e2][3] = { h: 2, a: 1 };
+  state.results[1] = { h: 2, a: 0 };
   boot({ player: PLAYERS[e1], email: e1 });
 } else {
   setupAuthGate({ onAuthorized: boot });

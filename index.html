@@ -43,12 +43,12 @@
 
     <nav class="tabs">
       <button class="tab active" data-tab="jogos">Jogos</button>
+      <button class="tab" data-tab="calendario">Calendário</button>
       <button class="tab" data-tab="ranking">Ranking</button>
       <button class="tab" data-tab="regras">Regras</button>
     </nav>
 
     <div class="filters" id="filters">
-      <button id="btn-hoje" class="btn btn-small">📍 Hoje</button>
       <select id="stage-filter" class="stage-filter">
         <option value="">Todas as fases</option>
       </select>
@@ -56,6 +56,7 @@
 
     <main>
       <section id="view-jogos" class="view"></section>
+      <section id="view-calendario" class="view" hidden></section>
       <section id="view-ranking" class="view" hidden></section>
       <section id="view-regras" class="view" hidden>
         <div class="regras-card">
@@ -73,6 +74,11 @@
         </div>
       </section>
     </main>
+
+    <div id="save-bar" class="save-bar">
+      <button id="btn-save" class="btn btn-save">💾 Salvar Meus Palpites</button>
+      <span id="save-toast" class="save-toast" hidden>✓ Palpites salvos!</span>
+    </div>
   </div>
 
   <script type="module" src="js/app.js"></script>
