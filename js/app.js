@@ -69,8 +69,9 @@ function dayKey(m) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
     .format(new Date(m.utc));
 }
-function shortDate(m) {
-  return fmtDay(new Date(m.utc), { weekday: 'short', day: 'numeric', month: 'short' });
+function dayLabel(m) {
+  const s = fmtDay(new Date(m.utc), { weekday: 'long', day: 'numeric', month: 'long' });
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 function hourLabel(m) {
   return fmtDay(new Date(m.utc), { hour: '2-digit', minute: '2-digit' });
@@ -172,7 +173,7 @@ function matchRow(m, cols) {
     <tr class="match-row" id="match-${m.id}">
       <td class="cell-jogo">
         <div class="mt">${m.homeFlag} ${m.home} <span class="mvs">×</span> ${m.awayFlag} ${m.away}</div>
-        <div class="md">${shortDate(m)} · ${hourLabel(m)} · ${m.venue}</div>
+        <div class="md">${m.stage} · ${hourLabel(m)} · ${m.venue}</div>
       </td>
       ${realCell}
       ${pickCells}
@@ -191,12 +192,16 @@ function renderJogos() {
       ${cols.map((e) => `<th class="col-${PLAYERS[e].color}">${PLAYERS[e].emoji} ${PLAYERS[e].name}</th>`).join('')}
     </tr>`;
 
-  let body = '';
-  for (const stage of STAGES) {
-    if (state.stageFilter && stage !== state.stageFilter) continue;
-    const ms = ORDERED.filter((m) => m.stage === stage);
-    body += `<tr class="stage-row"><td colspan="${ncols}"><span class="stage-label">📌 ${stage.toUpperCase()}</span></td></tr>`;
-    body += ms.map((m) => matchRow(m, cols)).join('');
+  // jogos em ordem cronológica, com um cabeçalho por dia
+  let body = '', lastDay = '';
+  for (const m of ORDERED) {
+    if (state.stageFilter && m.stage !== state.stageFilter) continue;
+    const dk = dayKey(m);
+    if (dk !== lastDay) {
+      lastDay = dk;
+      body += `<tr class="stage-row" data-day="${dk}"><td colspan="${ncols}"><span class="stage-label">📅 ${dayLabel(m).toUpperCase()}</span></td></tr>`;
+    }
+    body += matchRow(m, cols);
   }
 
   el.innerHTML = `
@@ -366,6 +371,13 @@ function setupInteractions() {
       document.getElementById('filters').style.display = tab === 'jogos' ? '' : 'none';
       document.getElementById('save-bar').style.display = tab === 'jogos' ? '' : 'none';
     });
+  });
+
+  document.getElementById('btn-hoje').addEventListener('click', () => {
+    const tk = todayKey();
+    const days = [...document.querySelectorAll('.stage-row[data-day]')];
+    const target = days.find((d) => d.dataset.day >= tk) || days[days.length - 1];
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 
   const sel = document.getElementById('stage-filter');
