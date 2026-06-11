@@ -1,0 +1,14 @@
+{
+  "name": "Bolão da Copa 2026 — Vini × Vivi",
+  "short_name": "Bolão Copa",
+  "description": "Bolão de palpites dos jogos da Copa do Mundo 2026.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1f12",
+  "theme_color": "#14532d",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

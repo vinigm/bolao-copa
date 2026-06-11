@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#14532d">
+  <title>Bolão da Copa 2026 — Vini × Vivi</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon.svg">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Portão de login -->
+  <div id="auth-gate" class="auth-gate" hidden>
+    <div class="auth-card">
+      <div class="auth-logo">⚽</div>
+      <h1>Bolão da Copa 2026</h1>
+      <p class="auth-sub">Vini × Vivi</p>
+      <button id="btn-login" class="btn btn-primary">Entrar com Google</button>
+      <p id="auth-error" class="auth-error" hidden></p>
+    </div>
+  </div>
+
+  <!-- App -->
+  <div id="app" hidden>
+    <header class="topbar">
+      <div class="topbar-title">
+        <span class="topbar-ball">⚽</span>
+        <div>
+          <strong>Bolão da Copa 2026</strong>
+          <small>Vini × Vivi</small>
+        </div>
+      </div>
+      <div class="topbar-user">
+        <span id="user-chip" class="user-chip"></span>
+        <button id="btn-logout" class="btn-ghost" title="Sair">Sair</button>
+      </div>
+    </header>
+
+    <div id="placar-geral" class="placar-geral"></div>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="jogos">Jogos</button>
+      <button class="tab" data-tab="ranking">Ranking</button>
+      <button class="tab" data-tab="regras">Regras</button>
+    </nav>
+
+    <div class="filters" id="filters">
+      <button id="btn-hoje" class="btn btn-small">📍 Hoje</button>
+      <select id="stage-filter" class="stage-filter">
+        <option value="">Todas as fases</option>
+      </select>
+    </div>
+
+    <main>
+      <section id="view-jogos" class="view"></section>
+      <section id="view-ranking" class="view" hidden></section>
+      <section id="view-regras" class="view" hidden>
+        <div class="regras-card">
+          <h2>📋 Regras do bolão</h2>
+          <ul>
+            <li>🎯 <strong>Placar exato</strong>: <strong>3 pontos</strong></li>
+            <li>✅ <strong>Acertou o vencedor (ou empate)</strong>, mas não o placar: <strong>1 ponto</strong></li>
+            <li>❌ Errou tudo: <strong>0 pontos</strong></li>
+            <li>🔒 O palpite trava no horário do jogo — e até lá o palpite do outro fica <strong>secreto</strong> 🙈</li>
+            <li>⚖️ Empate no total? Vence quem tiver mais <strong>placares exatos</strong>.</li>
+            <li>🏟️ Jogos do mata-mata: vale o placar no <strong>tempo normal + prorrogação</strong> (pênaltis não contam pro placar, mas quem passa define o vencedor pro palpite).</li>
+            <li>📝 Qualquer um dos dois pode lançar o resultado oficial depois do jogo.</li>
+          </ul>
+          <p class="regras-aposta">🏆 O que o campeão ganha? Isso vocês combinam entre si… 😏</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+  <script>
+    // Sem service worker no modo demo (atrapalha o desenvolvimento com cache).
+    if ('serviceWorker' in navigator && !location.search.includes('demo')) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+    }
+  </script>
+</body>
+</html>

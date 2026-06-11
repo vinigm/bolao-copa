@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// Bolão Vini × Vivi:
+//   palpites/{email}  → cada um escreve só o próprio doc; os dois leem tudo
+//   bolao/resultados  → os dois leem e escrevem (qualquer um lança o placar oficial)
+// Pra adicionar gente: incluir o e-mail aqui E em js/players.js.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function emailLower() {
+      return request.auth != null ? request.auth.token.email.lower() : '';
+    }
+    function isMember() {
+      return emailLower() in ['vinigm@gmail.com', 'victoria.cerutti@gmail.com'];
+    }
+
+    match /palpites/{email} {
+      allow read: if isMember();
+      allow write: if isMember() && emailLower() == email;
+    }
+
+    match /bolao/resultados {
+      allow read, write: if isMember();
+    }
+  }
+}
