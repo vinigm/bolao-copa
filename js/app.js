@@ -56,6 +56,7 @@ export function points(pick, res) {
 function totals(email) {
   let pts = 0, exatos = 0, vencedor = 0, jogos = 0;
   for (const m of MATCHES) {
+    if (m.noScore) continue; // jogo fora da pontuação (ex.: abertura)
     const p = points(state.picks[email]?.[m.id], effResult(m.id));
     if (p === null) continue;
     jogos++; pts += p;
@@ -176,7 +177,7 @@ function matchRow(m, cols) {
     let body;
     if (!locked && !mine) body = `<span class="secret" title="segredo até o jogo começar">🙈</span>`;
     else body = scoreInputs(m.id, 'pick', pick, !mine || locked);
-    const badge = locked && res ? `<div class="cell-pts">${ptsBadge(points(pick, res))}</div>` : '';
+    const badge = locked && res && !m.noScore ? `<div class="cell-pts">${ptsBadge(points(pick, res))}</div>` : '';
     return `<td class="cell-pick cell-${pl.color}">${body}${badge}</td>`;
   }).join('');
 
@@ -184,7 +185,7 @@ function matchRow(m, cols) {
     <tr class="match-row" id="match-${m.id}">
       <td class="cell-jogo">
         <div class="mt">${m.homeFlag} ${m.home} <span class="mvs">×</span> ${m.awayFlag} ${m.away}</div>
-        <div class="md">${m.stage} · ${hourLabel(m)} · ${m.venue}</div>
+        <div class="md">${m.stage} · ${hourLabel(m)} · ${m.venue}${m.noScore ? ' · <b>fora do bolão</b>' : ''}</div>
       </td>
       ${realCell}
       ${pickCells}
@@ -315,7 +316,7 @@ function renderRanking() {
   }).join('');
 
   // últimos 5 jogos com resultado
-  const done = ORDERED.filter((m) => effResult(m.id)).slice(-5).reverse();
+  const done = ORDERED.filter((m) => effResult(m.id) && !m.noScore).slice(-5).reverse();
   const hist = done.map((m) => {
     const r = effResult(m.id);
     const per = PLAYER_EMAILS.map((email) => {

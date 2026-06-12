@@ -6,7 +6,8 @@
 
 export const MATCHES = [
   // ===== FASE DE GRUPOS (jogos 1–72) =====
-  { id: 1, stage: 'Grupo A', home: 'México', away: 'África do Sul', homeFlag: '🇲🇽', awayFlag: '🇿🇦', utc: '2026-06-11T19:00:00Z', venue: 'Cidade do México' },
+  // noScore: jogo fora da pontuação (o bolão começou depois da abertura — só o Vini tinha palpitado)
+  { id: 1, stage: 'Grupo A', home: 'México', away: 'África do Sul', homeFlag: '🇲🇽', awayFlag: '🇿🇦', utc: '2026-06-11T19:00:00Z', venue: 'Cidade do México', noScore: true },
   { id: 2, stage: 'Grupo A', home: 'Coreia do Sul', away: 'República Tcheca', homeFlag: '🇰🇷', awayFlag: '🇨🇿', utc: '2026-06-12T02:00:00Z', venue: 'Guadalajara' },
   { id: 3, stage: 'Grupo B', home: 'Canadá', away: 'Bósnia e Herzegovina', homeFlag: '🇨🇦', awayFlag: '🇧🇦', utc: '2026-06-12T19:00:00Z', venue: 'Toronto' },
   { id: 4, stage: 'Grupo D', home: 'Estados Unidos', away: 'Paraguai', homeFlag: '🇺🇸', awayFlag: '🇵🇾', utc: '2026-06-13T01:00:00Z', venue: 'Los Angeles' },
