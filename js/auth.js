@@ -51,7 +51,7 @@ export function setupAuthGate({ onAuthorized }) {
     const email = (user.email || '').toLowerCase();
     const player = PLAYERS[email];
     if (!player) {
-      showGate('Esse bolão é só do Vini e da Vivi. 🙃');
+      showGate('Você não está na lista do bolão. Pede pro Vini te adicionar. 🙃');
       await signOut(auth);
       return;
     }

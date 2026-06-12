@@ -271,25 +271,26 @@ function renderCalendario() {
 
 // ---------- render: placar geral e ranking ----------
 
+// Classificação: pontos, desempate por placares exatos. Coroa só pra líder isolado.
+function standings() {
+  const ts = PLAYER_EMAILS.map((email) => ({ email, pl: PLAYERS[email], t: totals(email) }))
+    .sort((a, b) => (b.t.pts - a.t.pts) || (b.t.exatos - a.t.exatos));
+  const [a, b] = ts;
+  const hasLeader = ts.length > 1 && (a.t.pts > b.t.pts || (a.t.pts === b.t.pts && a.t.exatos > b.t.exatos));
+  return { ts, leader: hasLeader ? a.email : null };
+}
+
 function renderPlacarGeral() {
   const el = document.getElementById('placar-geral');
-  const [e1, e2] = PLAYER_EMAILS;
-  const t1 = totals(e1), t2 = totals(e2);
-  const p1 = PLAYERS[e1], p2 = PLAYERS[e2];
-  const lead1 = t1.pts > t2.pts || (t1.pts === t2.pts && t1.exatos > t2.exatos);
-  const lead2 = t2.pts > t1.pts || (t2.pts === t1.pts && t2.exatos > t1.exatos);
-  const crown = (lead) => (lead ? ' 👑' : '');
-  el.innerHTML = `
-    <span class="pg-side pg-${p1.color}">${p1.emoji} ${p1.name}${crown(lead1)}</span>
-    <span class="pg-score">${t1.pts} × ${t2.pts}</span>
-    <span class="pg-side pg-${p2.color}">${crown(lead2)}${p2.name} ${p2.emoji}</span>`;
+  const { ts, leader } = standings();
+  el.innerHTML = ts.map(({ email, pl, t }) => `
+    <span class="pg-chip pg-${pl.color}">${pl.emoji} ${pl.name}${email === leader ? ' 👑' : ''} <b>${t.pts}</b></span>`)
+    .join('');
 }
 
 function renderRanking() {
   const el = document.getElementById('view-ranking');
-  const cards = PLAYER_EMAILS.map((email) => {
-    const pl = PLAYERS[email];
-    const t = totals(email);
+  const cards = standings().ts.map(({ pl, t }) => {
     return `
       <div class="rank-card rank-${pl.color}">
         <div class="rank-name">${pl.emoji} ${pl.name}</div>
@@ -438,11 +439,12 @@ if (DEMO) {
   document.getElementById('auth-gate').hidden = true;
   document.getElementById('app').hidden = false;
   for (const e of PLAYER_EMAILS) state.picks[e] = {};
-  const [e1, e2] = PLAYER_EMAILS;
+  const [e1, e2, e3] = PLAYER_EMAILS;
   state.picks[e1][1] = { h: 2, a: 0 };
   state.picks[e2][1] = { h: 1, a: 0 };
   state.picks[e1][3] = { h: 1, a: 1 };
   state.picks[e2][3] = { h: 2, a: 1 };
+  if (e3) { state.picks[e3][1] = { h: 0, a: 1 }; state.picks[e3][3] = { h: 1, a: 0 }; }
   state.results[1] = { h: 2, a: 0 };
   boot({ player: PLAYERS[e1], email: e1 });
 } else {

@@ -1,6 +1,6 @@
-# ⚽ Bolão da Copa 2026 — Vini × Vivi
+# ⚽ Bolão da Copa 2026 — Vini × Vivi × Antonio
 
-Bolão de palpites dos jogos da Copa do Mundo 2026, só pra dois. 💚
+Bolão de palpites dos jogos da Copa do Mundo 2026, entre amigos. 💚
 
 **App:** https://vinigm.github.io/bolao-copa/
 

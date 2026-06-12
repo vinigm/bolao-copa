@@ -10,7 +10,8 @@ service cloud.firestore {
       return request.auth != null ? request.auth.token.email.lower() : '';
     }
     function isMember() {
-      return emailLower() in ['vinigm@gmail.com', 'victoria.cerutti@gmail.com'];
+      // TODO: trocar pelo Gmail real do Antonio (mesmo e-mail do js/players.js)
+      return emailLower() in ['vinigm@gmail.com', 'victoria.cerutti@gmail.com', 'EMAIL_DO_ANTONIO@gmail.com'];
     }
 
     match /palpites/{email} {
