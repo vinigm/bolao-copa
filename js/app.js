@@ -10,6 +10,7 @@ import { db } from './firebase-config.js';
 import { setupAuthGate } from './auth.js';
 import { PLAYERS, PLAYER_EMAILS } from './players.js';
 import { MATCHES } from './matches.js';
+import { fetchScores } from './livescores.js';
 
 const TZ = 'America/Sao_Paulo';
 
@@ -32,12 +33,19 @@ const STAGES = (() => {
 const state = {
   me: null,                 // email logado
   picks: {},                // email → { matchId: {h,a} }
-  results: {},              // matchId → {h,a}
+  results: {},              // matchId → {h,a} (Firestore: manual ou auto persistido)
+  auto: {},                 // matchId → {h,a} vindos da ESPN (jogos encerrados)
+  live: {},                 // matchId → {h,a,clock} de jogos em andamento
   stageFilter: '',
   selectedDay: null,        // dia selecionado no calendário (YYYY-MM-DD)
 };
 
 // ---------- pontuação ----------
+
+// Resultado que vale: o gravado no Firestore (manual/persistido) ou o automático da ESPN.
+function effResult(id) {
+  return state.results[id] || state.auto[id] || null;
+}
 
 export function points(pick, res) {
   if (!pick || !res) return null;
@@ -48,7 +56,7 @@ export function points(pick, res) {
 function totals(email) {
   let pts = 0, exatos = 0, vencedor = 0, jogos = 0;
   for (const m of MATCHES) {
-    const p = points(state.picks[email]?.[m.id], state.results[m.id]);
+    const p = points(state.picks[email]?.[m.id], effResult(m.id));
     if (p === null) continue;
     jogos++; pts += p;
     if (p === 3) exatos++;
@@ -152,10 +160,13 @@ function playerColumns() {
 
 function matchRow(m, cols) {
   const locked = isLocked(m);
-  const res = state.results[m.id] || null;
+  const res = effResult(m.id);
+  const lv = !res && state.live[m.id];
 
+  const liveBadge = lv
+    ? `<div class="live-badge">⚽ ${lv.h}×${lv.a}${lv.clock ? ` · ${lv.clock}` : ''}</div>` : '';
   const realCell = locked
-    ? `<td class="cell-real">${scoreInputs(m.id, 'result', res, false)}</td>`
+    ? `<td class="cell-real">${scoreInputs(m.id, 'result', res, false)}${liveBadge}</td>`
     : `<td class="cell-real"><span class="dash" title="abre quando o jogo começar">–</span></td>`;
 
   const pickCells = cols.map((email) => {
@@ -304,9 +315,9 @@ function renderRanking() {
   }).join('');
 
   // últimos 5 jogos com resultado
-  const done = ORDERED.filter((m) => state.results[m.id]).slice(-5).reverse();
+  const done = ORDERED.filter((m) => effResult(m.id)).slice(-5).reverse();
   const hist = done.map((m) => {
-    const r = state.results[m.id];
+    const r = effResult(m.id);
     const per = PLAYER_EMAILS.map((email) => {
       const pl = PLAYERS[email];
       const p = points(state.picks[email]?.[m.id], r);
@@ -401,6 +412,47 @@ function setupInteractions() {
   });
 }
 
+// ---------- placar automático (ESPN) ----------
+
+let syncing = false;
+
+async function syncScores() {
+  if (syncing) return;
+  syncing = true;
+  try {
+    // jogos que já começaram e ainda não têm resultado gravado no Firestore
+    const pending = MATCHES.filter((m) => isLocked(m) && !state.results[m.id]);
+    const dates = [...new Set(pending.map((m) => m.utc.slice(0, 10).replace(/-/g, '')))]
+      .sort().slice(-8);
+    if (!dates.length) return;
+
+    const scores = await fetchScores(dates);
+    let changed = false;
+    for (const s of scores) {
+      if (s.completed) {
+        const prev = state.auto[s.id];
+        if (!prev || prev.h !== s.h || prev.a !== s.a) changed = true;
+        state.auto[s.id] = { h: s.h, a: s.a };
+        if (state.live[s.id]) { delete state.live[s.id]; changed = true; }
+        // grava no Firestore (vira oficial pra todo mundo); manual já gravado tem prioridade
+        if (!DEMO && state.me && !state.results[s.id]) {
+          setDoc(doc(db, 'bolao', 'resultados'), { results: { [s.id]: { h: s.h, a: s.a } } }, { merge: true })
+            .catch((e) => console.error('[Bolão] erro persistindo placar automático', e));
+        }
+      } else if (s.state === 'in') {
+        const prev = state.live[s.id];
+        if (!prev || prev.h !== s.h || prev.a !== s.a || prev.clock !== s.clock) changed = true;
+        state.live[s.id] = s;
+      }
+    }
+    if (changed && !document.activeElement?.classList?.contains('score')) renderAll();
+  } catch (e) {
+    console.warn('[Bolão] placar automático indisponível agora:', e?.message || e);
+  } finally {
+    syncing = false;
+  }
+}
+
 // ---------- snapshots ----------
 
 function subscribe() {
@@ -428,6 +480,10 @@ function boot({ player, email }) {
   renderAll();
   setupInteractions();
   if (!DEMO) subscribe();
+  // placar automático: na entrada, a cada 3 min e ao voltar pra aba
+  syncScores();
+  setInterval(syncScores, 180_000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) syncScores(); });
   // destrava linhas conforme os jogos começam (checa a cada minuto)
   setInterval(() => {
     if (document.activeElement?.classList?.contains('score')) return;

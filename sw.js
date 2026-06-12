@@ -2,7 +2,7 @@
 // Caminhos relativos pra funcionar no subdiretório do GitHub Pages.
 // IMPORTANTE: a cada mudança de asset, bumpar o CACHE (senão o PWA serve versão velha).
 
-const CACHE = 'bolao-v7';
+const CACHE = 'bolao-v8';
 const SHELL = [
   './',
   './index.html',
@@ -11,6 +11,7 @@ const SHELL = [
   './js/auth.js',
   './js/players.js',
   './js/matches.js',
+  './js/livescores.js',
   './js/firebase-config.js',
   './manifest.webmanifest',
   './icons/icon.svg',

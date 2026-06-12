@@ -161,6 +161,7 @@ main { padding: 0 12px 80px; max-width: var(--maxw); margin: 0 auto; }
 .cell-pts { margin-top: 3px; }
 
 .dash { color: #50705c; font-size: 16px; }
+.live-badge { margin-top: 3px; font-size: 11px; font-weight: 800; color: var(--gold); }
 .secret { font-size: 16px; }
 
 .score {
